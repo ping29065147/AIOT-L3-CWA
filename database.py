@@ -1,12 +1,11 @@
 """
-database.py - SQLite 資料庫建置、維護與查詢模組 (進階版)
-支援包含 PoP 降雨機率與 CI 舒適度指標之欄位。
+database.py - SQLite 資料庫建置、維護與查詢模組 (支援 7 天預報)
 """
 
 import sqlite3
 import pandas as pd
 from typing import List, Dict, Any
-from cwa_api import fetch_raw_weather_data, parse_weather_records
+from cwa_api import fetch_raw_weather_data_7day, parse_weather_records_7day
 
 DB_PATH = "data.db"
 
@@ -36,7 +35,6 @@ def init_db(db_path: str = DB_PATH) -> None:
         cursor = conn.cursor()
         cursor.execute(create_table_sql)
         
-        # 檢查舊版是否有 pop 與 ci 欄位，若沒有則動態新增 (Migration)
         cursor.execute("PRAGMA table_info(TemperatureForecasts);")
         columns = [col[1] for col in cursor.fetchall()]
         
@@ -77,20 +75,19 @@ def get_region_forecasts_df(region_name: str, db_path: str = DB_PATH) -> pd.Data
     return df
 
 def sync_api_to_db(db_path: str = DB_PATH) -> int:
-    """一鍵主動呼叫 API 並將最新資料寫入 SQLite 資料庫"""
+    """一鍵主動呼叫 7 天 API 並將最新資料寫入 SQLite 資料庫"""
     init_db(db_path)
-    raw_data = fetch_raw_weather_data()
-    parsed_records = parse_weather_records(raw_data)
+    raw_data = fetch_raw_weather_data_7day()
+    parsed_records = parse_weather_records_7day(raw_data)
     count = save_weather_data(parsed_records, db_path)
     return count
 
 if __name__ == "__main__":
-    print("正在執行進階資料庫初始化與 API 資料同步...")
+    print("正在執行 7 天資料庫初始化與 API 資料同步...")
     init_db()
     inserted_count = sync_api_to_db()
-    print(f"[SUCCESS] 成功更新 {inserted_count} 筆氣象紀錄至 data.db！")
+    print(f"[SUCCESS] 成功更新 {inserted_count} 筆 7 天氣象紀錄至 data.db！")
     
     df = get_all_forecasts_df()
-    print(f"\n[INFO] 資料庫現有資料筆數：{len(df)}")
-    print("\n資料庫前 5 筆紀錄展覽 (含 PoP & CI)：")
-    print(df[['locationName', 'regionName', 'dataDate', 'minT', 'maxT', 'weather', 'pop', 'ci']].head())
+    dates = sorted(df['dataDate'].unique())
+    print(f"\n[INFO] 資料庫現有資料筆數：{len(df)}，涵蓋 {len(dates)} 天 ({dates[0]} ~ {dates[-1]})")
