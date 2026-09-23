@@ -1,6 +1,6 @@
 """
-app.py - Taiwan Weather Forecast Pro (Stage 6 旗艦 AI 版)
-整合 7 天預報 + 高清地圖 + AI 氣象主播廣播文案 + 戶外旅遊指數 + 全台氣溫排行榜。
+app.py - Taiwan Weather Forecast Pro (全彩高清版)
+整合 7 天預報 + OpenStreetMap 全彩高清地圖 + AI 氣象主播廣播文案 + 戶外旅遊指數 + 全台氣溫排行榜。
 """
 
 import streamlit as st
@@ -51,13 +51,13 @@ CITY_COORDS = {
 def get_temp_color_hex(temp: float) -> str:
     """依據溫度傳回 Hex 色碼"""
     if temp < 20:
-        return "#1C83E1"
+        return "#1C83E1"       # <20℃ 寶藍色
     elif temp <= 25:
-        return "#2E7D32"
+        return "#2E7D32"      # 20-25℃ 森林綠
     elif temp <= 30:
-        return "#EF6C00"
+        return "#EF6C00"      # 25-30℃ 鮮橘色
     else:
-        return "#D32F2F"
+        return "#D32F2F"      # >30℃ 亮紅色
 
 # 標題
 st.title("🌤️ Taiwan Weather Forecast 7 天氣象互動儀表板 Pro")
@@ -84,17 +84,6 @@ with st.sidebar:
 
     available_dates = sorted(df_all["dataDate"].unique())
     selected_date = st.selectbox("📅 選擇觀測日期 (Select Date)", available_dates)
-
-    st.markdown("---")
-    st.markdown("🗺️ **地圖底圖風格選擇**")
-    tile_choice = st.radio("地圖模式：", ["OpenStreetMap (全彩高清標準)", "CartoDB voyager (亮麗現代)", "CartoDB positron (簡約淡色)"])
-    
-    tiles_map = {
-        "OpenStreetMap (全彩高清標準)": "OpenStreetMap",
-        "CartoDB voyager (亮麗現代)": "CartoDB voyager",
-        "CartoDB positron (簡約淡色)": "CartoDB positron"
-    }
-    selected_tile = tiles_map[tile_choice]
 
     st.markdown("---")
     csv_data = df_all.to_csv(index=False).encode('utf-8-sig')
@@ -181,14 +170,15 @@ with tab1:
             use_container_width=True
         )
 
-# --- TAB 2: 高清晰地圖 ---
+# --- TAB 2: 高清晰地圖 (使用 OpenStreetMap 全彩高清標準底圖) ---
 with tab2:
-    st.subheader(f"🗺️ 全台氣溫與天氣地圖 (日期：{selected_date})")
+    st.subheader(f"🗺️ 全台氣溫與天氣地圖 (預報日期：{selected_date})")
     
     map_mode = st.radio("🔍 地圖模式：", ["全台 22 縣市視角 (直觀數據標籤)", "6 大區域視角 (區域統計)"], horizontal=True)
     
     df_date = df_all[df_all["dataDate"] == selected_date]
-    m = folium.Map(location=[23.7, 120.95], zoom_start=8, tiles=selected_tile)
+    # 固定為 OpenStreetMap 全彩高清標準底圖
+    m = folium.Map(location=[23.7, 120.95], zoom_start=8, tiles="OpenStreetMap")
     
     if map_mode == "全台 22 縣市視角 (直觀數據標籤)":
         city_summary = df_date.groupby("locationName").agg(
@@ -308,7 +298,6 @@ with tab3:
 
     st.markdown("---")
     
-    # 全台極端預警與排行榜
     st.markdown("### 🚨 全台 7 天極端天氣與氣溫排行榜")
     c_rank1, c_rank2 = st.columns(2)
     
@@ -332,4 +321,4 @@ with tab4:
 
 # 頁尾
 st.markdown("---")
-st.caption("AI 創新微課程 Taiwan Weather Forecast Pro | 7-Day CWA Open Data API (F-D0047-091) × SQLite × Streamlit × Folium × AI Presenter")
+st.caption("AI 創新微課程 Taiwan Weather Forecast Pro | 7-Day CWA Open Data API (F-D0047-091) × SQLite × Streamlit × Folium OpenStreetMap")
