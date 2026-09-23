@@ -1,13 +1,13 @@
 """
-cwa_api.py - 中央氣象署 (CWA) Open Data API 擷取與解析模組
-用於從 CWA API 抓取縣市預報資料，並整理為結構化數據。
+cwa_api.py - 中央氣象署 (CWA) Open Data API 擷取與解析模組 (進階版)
+用於從 CWA API 抓取縣市預報資料（包含 MinT, MaxT, Wx, PoP 降雨機率, CI 舒適度）。
 """
 
 import requests
 import urllib3
 from typing import List, Dict, Any
 
-# 停用 SSL 無安全憑證警告訊息 (解決 CWA 伺服器憑證過期/認證問題)
+# 停用 SSL 無安全憑證警告訊息
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # CWA API 設定
@@ -29,7 +29,7 @@ def get_region_name(location_name: str) -> str:
     for region, cities in REGION_MAPPING.items():
         if location_name in cities:
             return region
-    return "其他地區"
+    return "離島地區"
 
 def fetch_raw_weather_data(api_key: str = API_KEY) -> Dict[str, Any]:
     """呼叫 CWA API 取得原始 JSON 資料"""
@@ -37,26 +37,13 @@ def fetch_raw_weather_data(api_key: str = API_KEY) -> Dict[str, Any]:
         "Authorization": api_key,
         "format": "JSON"
     }
-    # verify=False 解決 Windows SSL 證書驗證問題
     response = requests.get(CWA_API_URL, params=params, verify=False, timeout=10)
     response.raise_for_status()
     return response.json()
 
 def parse_weather_records(raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    解析 JSON 資料，提取每個縣市與分區的最低溫 (MinT) 與最高溫 (MaxT) 預報
-    回傳格式包含：
-    [
-        {
-            "locationName": "臺北市",
-            "regionName": "北部地區",
-            "dataDate": "2026-04-14",
-            "minT": 18.0,
-            "maxT": 26.0,
-            "weather": "晴時多雲"
-        },
-        ...
-    ]
+    解析 JSON 資料，提取氣溫 (MinT/MaxT)、天氣現象 (Wx)、降雨機率 (PoP) 與舒適度 (CI)
     """
     records = raw_data.get("records", {})
     location_list = records.get("location", [])
@@ -71,11 +58,12 @@ def parse_weather_records(raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         min_t_elem = next((item for item in weather_elements if item.get("elementName") == "MinT"), None)
         max_t_elem = next((item for item in weather_elements if item.get("elementName") == "MaxT"), None)
         wx_elem = next((item for item in weather_elements if item.get("elementName") == "Wx"), None)
+        pop_elem = next((item for item in weather_elements if item.get("elementName") == "PoP"), None)
+        ci_elem = next((item for item in weather_elements if item.get("elementName") == "CI"), None)
         
         if not min_t_elem or not max_t_elem:
             continue
             
-        # 以時段為單位提取預報
         times_count = len(min_t_elem.get("time", []))
         for i in range(times_count):
             time_info = min_t_elem["time"][i]
@@ -86,6 +74,15 @@ def parse_weather_records(raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
             max_temp = float(max_t_elem["time"][i]["parameter"]["parameterName"])
             wx_text = wx_elem["time"][i]["parameter"]["parameterName"] if wx_elem else "多雲"
             
+            pop_val = 0
+            if pop_elem and i < len(pop_elem.get("time", [])):
+                pop_str = pop_elem["time"][i]["parameter"].get("parameterName", "0")
+                pop_val = int(pop_str) if pop_str.isdigit() else 0
+                
+            ci_text = "舒適"
+            if ci_elem and i < len(ci_elem.get("time", [])):
+                ci_text = ci_elem["time"][i]["parameter"].get("parameterName", "舒適")
+            
             parsed_results.append({
                 "locationName": city_name,
                 "regionName": region_name,
@@ -93,20 +90,21 @@ def parse_weather_records(raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "startTime": start_time,
                 "minT": min_temp,
                 "maxT": max_temp,
-                "weather": wx_text
+                "weather": wx_text,
+                "pop": pop_val,
+                "ci": ci_text
             })
             
     return parsed_results
 
 if __name__ == "__main__":
-    print("正在測試 CWA API 資料擷取...")
+    print("正在測試進階 CWA API 資料擷取 (含 PoP & CI)...")
     try:
         raw_json = fetch_raw_weather_data()
-        print("[SUCCESS] 成功存取 CWA API！")
         parsed = parse_weather_records(raw_json)
-        print(f"[SUCCESS] 成功解析 {len(parsed)} 筆預報紀錄。")
-        print("\n前 3 筆解析結果範例：")
-        for item in parsed[:3]:
+        print(f"[SUCCESS] 成功解析 {len(parsed)} 筆完整氣象紀錄。")
+        print("前 2 筆數據對照：")
+        for item in parsed[:2]:
             print(item)
     except Exception as e:
         print(f"[ERROR] 擷取失敗：{e}")

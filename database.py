@@ -1,11 +1,11 @@
 """
-database.py - SQLite 資料庫建置、維護與查詢模組
-負責將 CWA API 解析出的天氣預報資料寫入 data.db，並提供前端查詢介面。
+database.py - SQLite 資料庫建置、維護與查詢模組 (進階版)
+支援包含 PoP 降雨機率與 CI 舒適度指標之欄位。
 """
 
 import sqlite3
 import pandas as pd
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from cwa_api import fetch_raw_weather_data, parse_weather_records
 
 DB_PATH = "data.db"
@@ -15,7 +15,7 @@ def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     return sqlite3.connect(db_path)
 
 def init_db(db_path: str = DB_PATH) -> None:
-    """初始化資料庫並創建 TemperatureForecasts 資料表"""
+    """初始化資料庫並自動補充缺少的欄位 (Schema Migration)"""
     create_table_sql = """
     CREATE TABLE IF NOT EXISTS TemperatureForecasts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +26,8 @@ def init_db(db_path: str = DB_PATH) -> None:
         minT REAL NOT NULL,
         maxT REAL NOT NULL,
         weather TEXT,
+        pop INTEGER DEFAULT 0,
+        ci TEXT DEFAULT '舒適',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(locationName, startTime) ON CONFLICT REPLACE
     );
@@ -33,6 +35,16 @@ def init_db(db_path: str = DB_PATH) -> None:
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(create_table_sql)
+        
+        # 檢查舊版是否有 pop 與 ci 欄位，若沒有則動態新增 (Migration)
+        cursor.execute("PRAGMA table_info(TemperatureForecasts);")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if "pop" not in columns:
+            cursor.execute("ALTER TABLE TemperatureForecasts ADD COLUMN pop INTEGER DEFAULT 0;")
+        if "ci" not in columns:
+            cursor.execute("ALTER TABLE TemperatureForecasts ADD COLUMN ci TEXT DEFAULT '舒適';")
+            
         conn.commit()
 
 def save_weather_data(records: List[Dict[str, Any]], db_path: str = DB_PATH) -> int:
@@ -41,8 +53,8 @@ def save_weather_data(records: List[Dict[str, Any]], db_path: str = DB_PATH) -> 
         return 0
 
     insert_sql = """
-    INSERT INTO TemperatureForecasts (locationName, regionName, dataDate, startTime, minT, maxT, weather)
-    VALUES (:locationName, :regionName, :dataDate, :startTime, :minT, :maxT, :weather);
+    INSERT INTO TemperatureForecasts (locationName, regionName, dataDate, startTime, minT, maxT, weather, pop, ci)
+    VALUES (:locationName, :regionName, :dataDate, :startTime, :minT, :maxT, :weather, :pop, :ci);
     """
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
@@ -73,12 +85,12 @@ def sync_api_to_db(db_path: str = DB_PATH) -> int:
     return count
 
 if __name__ == "__main__":
-    print("正在執行資料庫初始化與 API 資料同步...")
+    print("正在執行進階資料庫初始化與 API 資料同步...")
     init_db()
     inserted_count = sync_api_to_db()
-    print(f"[SUCCESS] 成功寫入/更新 {inserted_count} 筆氣象資料至 data.db！")
+    print(f"[SUCCESS] 成功更新 {inserted_count} 筆氣象紀錄至 data.db！")
     
     df = get_all_forecasts_df()
     print(f"\n[INFO] 資料庫現有資料筆數：{len(df)}")
-    print("\n資料庫前 5 筆紀錄展覽：")
-    print(df[['locationName', 'regionName', 'dataDate', 'minT', 'maxT', 'weather']].head())
+    print("\n資料庫前 5 筆紀錄展覽 (含 PoP & CI)：")
+    print(df[['locationName', 'regionName', 'dataDate', 'minT', 'maxT', 'weather', 'pop', 'ci']].head())
